@@ -1,0 +1,79 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+import urllib2
+import json
+from subprocess import *
+from optparse import OptionParser, OptionValueError
+import tempfile
+import os
+from urlparse import urlparse
+import httplib
+import urllib
+
+api_key = Popen(["git", "config", "redmine.apiKey"], stdout=PIPE).communicate()[0].strip()
+if not api_key:
+    print "Please configure Redmine API key using:"
+    print "    git config --global redmine.apiKey '<your api key>'"
+    quit(1)
+
+project_url = Popen(["git", "config", "redmine.projectUrl"], stdout=PIPE).communicate()[0].strip()
+if not project_url:
+    print "Please configure Redmine URL of the project using:"
+    print "    git config redmine.projectUrl '<project url>'"
+    quit(1)
+
+usage = "usage: %prog [options] keyword"
+parser = OptionParser(usage)
+(options, args) = parser.parse_args()
+
+u = urlparse(project_url)
+
+def get_issue(id):
+    conn = httplib.HTTPConnection(u.netloc)
+    conn.request("GET", "%s/issues/%d.json?key=%s" % (u.path, id, api_key))
+    r1 = conn.getresponse()
+    if r1.status != 200:
+        print r1.status, r1.reason
+        quit(1)
+
+    data1 = r1.read()
+    return json.loads(data1)
+
+if args:
+    if args[0] == 'commit':
+        if len(args) < 2:
+            print "Issue number is absent:"
+            print "    git redmine commit <issue number>"
+            quit(1)
+        issue = get_issue(int(args[1]))
+
+        tmp_file = tempfile.mkstemp()
+        with os.fdopen(tmp_file[0], "w") as fh:
+            fh.write("FIX: %s (#%d)" % (issue["issue"]["subject"].encode('utf-8'), issue["issue"]["id"]))
+            fh.close()
+        call(["git", "commit", "-v", "--edit", "--file", tmp_file[1]])
+        os.remove(tmp_file[1])
+        quit(0)
+
+    if args[0].isdigit():
+        issue = get_issue(int(args[0]))
+        print "%s : #%d" % ("ID".rjust(16), issue["issue"]["id"])
+        print "%s : %s" % ("Priority".rjust(16), issue["issue"]["priority"]["name"])
+        print "%s : %s" % ("Tracker".rjust(16), issue["issue"]["tracker"]["name"])
+        print "%s : %d%%" % ("Done Ratio".rjust(16), issue["issue"]["done_ratio"])
+        print "%s : %s" % ("Assigned To".rjust(16), issue["issue"]["assigned_to"]["name"])
+        print "%s : %s" % ("Subject".rjust(16), issue["issue"]["subject"])
+        print "------"
+        print issue["issue"]["description"]
+        quit(0)
+
+f = urllib2.urlopen('%s/issues.json?limit=100&key=%s' % (project_url, api_key))
+data = f.read()
+j = json.loads(data)
+issues = j["issues"]
+issues.sort(cmp=lambda x,y: cmp(y["priority"]["id"], x["priority"]["id"]))
+for issue in issues:
+    print "%3d%% %s %s [%s] %s" % (issue["done_ratio"], issue["priority"]["id"], ('#%d' % issue["id"]).ljust(5), issue["status"]["name"], issue["subject"])
+
+quit(0)
