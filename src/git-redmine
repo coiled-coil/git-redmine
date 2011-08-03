@@ -50,7 +50,7 @@ if args:
 
         tmp_file = tempfile.mkstemp()
         with os.fdopen(tmp_file[0], "w") as fh:
-            fh.write("FIX: %s (#%d)" % (issue["issue"]["subject"].encode('utf-8'), issue["issue"]["id"]))
+            fh.write("%s: %s (#%d)" % (issue["issue"]["tracker"]["name"].encode('utf-8'), issue["issue"]["subject"].encode('utf-8'), issue["issue"]["id"]))
             fh.close()
         call(["git", "commit", "-v", "--edit", "--file", tmp_file[1]])
         os.remove(tmp_file[1])
